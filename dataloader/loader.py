@@ -969,7 +969,6 @@ class nyu_loader(loader):
 
 
         print('finish!!')
-        center_type = 'estimate'
         if center_type =='refine':
             # center_path = '{}/center_{}_refined.txt'.format(data_path, self.phase)
             center_path = '{}/center_{}_1_refined.txt'.format(self.root_dir, self.phase)
@@ -1077,7 +1076,7 @@ class nyu_loader(loader):
         # joint_MANO = torch.from_numpy(curLabel_MANO).float()
         # joint = joint_MANO
         # # print(joint_MANO)
-        # # display_keypoints('/data/handpose/WorkSpace/HandDiff/test_1.png', keypoints = curLabel_MANO)
+        # # display_keypoints('/data/handpose/WorkSpace/PLFCL/test_1.png', keypoints = curLabel_MANO)
         # joint_view = torch.Tensor(joint_MANO)
         # joint_vis = torch.ones_like(joint_view)
         # # #

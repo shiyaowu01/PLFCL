@@ -1,9 +1,11 @@
+"""Loss utilities for mesh-to-joint contrastive learning in PLFCL (Section III-B)."""
+
 import torch
 import torch.nn.functional as F
 from torch import nn
 import torch.distributed as dist
 import numpy as np
-__all__ = ['InfoNCE', 'info_nce']
+__all__ = ['InfoNCE', 'info_nce', 'mesh2joint_intra_contrastive_loss', 'mesh2joint_inter_contrastive_loss']
 from einops import rearrange, reduce, repeat
 
 def smooth_l1_loss(input, target, sigma=10., reduce=True, normalizer=1.0):
@@ -160,7 +162,7 @@ def sample_feature_from_3d(feature_space_3d, joint_img):
     """
 
 
-def intra_info_nce_loss(sample_gt_joint_feat, sample_pred_joint_feat, gt_joint_img, pred_joint_img, joint_mask, anchour_num=50, pos_num=100, neg_num=200, temperature=0.1):
+def mesh2joint_intra_contrastive_loss(sample_gt_joint_feat, sample_pred_joint_feat, gt_joint_img, pred_joint_img, joint_mask, anchour_num=50, pos_num=100, neg_num=200, temperature=0.1):
     """
     Args:
         gt_joint_img: (B, J, 3)
@@ -218,7 +220,7 @@ def intra_info_nce_loss(sample_gt_joint_feat, sample_pred_joint_feat, gt_joint_i
     loss = loss[loss_valid].mean()
     return loss
 
-# def intra_info_nce_loss(sample_gt_joint_feat, sample_pred_joint_feat, gt_joint_img, pred_joint_img, joint_mask, anchour_num=50, pos_num=100, neg_num=200, temperature=0.1):
+# def mesh2joint_intra_contrastive_loss(sample_gt_joint_feat, sample_pred_joint_feat, gt_joint_img, pred_joint_img, joint_mask, anchour_num=50, pos_num=100, neg_num=200, temperature=0.1):
 #     """
 #     Args:
 #         feature_space_3d: (B, C, D, H, W)
@@ -276,7 +278,7 @@ def intra_info_nce_loss(sample_gt_joint_feat, sample_pred_joint_feat, gt_joint_i
 #     # loss = loss[loss_valid].mean()
 #     return loss
 
-def inter_info_nce_loss(feature_space_3d, pred_joint_img, anchour_num=50, pos_num=100, neg_num=200, temperature=0.1):
+def mesh2joint_inter_contrastive_loss(feature_space_3d, pred_joint_img, anchour_num=50, pos_num=100, neg_num=200, temperature=0.1):
     """
     Args:
         feature_space_3d: (B, C, D, H, W)
@@ -358,6 +360,6 @@ if __name__ == '__main__':
     joint_img_cur = torch.randn(16, 21, 3)
     joint_valid_cur = torch.ones(16, 21) # (B, J)
     reduced_orig_joint_img = torch.randn(16, 21, 3)
-    # loss = intra_info_nce_loss(dense_feat, reduced_orig_joint_img, joint_img_cur, joint_valid_cur.squeeze(-1),anchour_num=32, pos_num=16, neg_num=8, temperature=0.07)
-    loss = inter_info_nce_loss(dense_feat, joint_img_cur.permute(0,2,1), anchour_num=16, pos_num=8, neg_num=16, temperature=0.07)
+    # loss = mesh2joint_intra_contrastive_loss(dense_feat, reduced_orig_joint_img, joint_img_cur, joint_valid_cur.squeeze(-1),anchour_num=32, pos_num=16, neg_num=8, temperature=0.07)
+    loss = mesh2joint_inter_contrastive_loss(dense_feat, joint_img_cur.permute(0,2,1), anchour_num=16, pos_num=8, neg_num=16, temperature=0.07)
     print(loss)

@@ -8,6 +8,7 @@ import time
 from tqdm import tqdm
 import numpy as np
 import importlib
+from model.parallel import PLFCLDataParallel
 
 import torch
 import torch.nn as nn
@@ -34,12 +35,12 @@ parser.add_argument('--INPUT_FEATURE_NUM', type=int, default = 3,  help='number 
 parser.add_argument('--iters', type=int, default = 500, help='start epoch')
 
 parser.add_argument('--save_root_dir', type=str, default='./results',  help='output folder')
-parser.add_argument('--model', type=str, default = 'netR_0.pth',  help='model name for training resume')
+parser.add_argument('--model', type=str, default = 'best_model.pth',  help='model name for training resume')
 parser.add_argument('--test_path', type=str, default = '/data/handpose/nyu/dataset',  help='model name for training resume')
 parser.add_argument('--protocal', type=str, default = 's0',  help='model name for training resume')
 
 parser.add_argument('--dataset', type=str, default = 'nyu', help='optimizer name for training resume')
-parser.add_argument('--model_name', type=str, default = 'handdiff',  help='')
+parser.add_argument('--model_name', type=str, default = 'plfcl',  help='')
 parser.add_argument('--gpu', type=str, default = '0',  help='gpu')
 
 parser.add_argument('--test_step', type=int, default = 1,  help='number of test timesteps')
@@ -88,12 +89,8 @@ print('#Test data:', len(test_data))
 print (opt)
 
 # 2. Define model, loss
-model = getattr(module, 'HandModel')(joints=opt.JOINT_NUM, iters=opt.iters)
+model = getattr(module, 'PLFCL')(joints=opt.JOINT_NUM, iters=opt.iters)
 
-if opt.ngpu > 1:
-    model.netR_1 = torch.nn.DataParallel(model.netR_1, range(opt.ngpu))
-    model.netR_2 = torch.nn.DataParallel(model.netR_2, range(opt.ngpu))
-    model.netR_3 = torch.nn.DataParallel(model.netR_3, range(opt.ngpu))
 if opt.model != '':
 	model.load_state_dict(torch.load(os.path.join(save_dir, opt.model), map_location=torch.device('cpu')), strict=False)
 
@@ -106,6 +103,8 @@ if torch.cuda.is_available():
 else:
 	criterion = nn.MSELoss(size_average=True)
 
+if torch.cuda.is_available() and opt.ngpu > 1:
+    model = PLFCLDataParallel(model, device_ids=list(range(opt.ngpu)))
 model.eval()
 test_mse = 0.0
 test_wld_err = 0.0

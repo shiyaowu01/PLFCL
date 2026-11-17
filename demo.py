@@ -9,6 +9,7 @@ import time
 from tqdm import tqdm
 import numpy as np
 import importlib
+from model.parallel import PLFCLDataParallel
 
 import torch
 import torch.nn as nn
@@ -44,7 +45,7 @@ parser.add_argument('--test_path', type=str, default='/data/handpose/nyu/dataset
 parser.add_argument('--protocal', type=str, default='s0', help='model name for training resume')
 
 parser.add_argument('--dataset', type=str, default='nyu', help='optimizer name for training resume')
-parser.add_argument('--model_name', type=str, default='handdiff', help='')
+parser.add_argument('--model_name', type=str, default='plfcl', help='')
 parser.add_argument('--gpu', type=str, default='0', help='gpu')
 
 parser.add_argument('--test_step', type=int, default=1, help='number of test timesteps')
@@ -88,19 +89,15 @@ print('#Test data:', len(test_data))
 print(opt)
 
 # 2. Define model, loss
-model = getattr(module, 'HandModel')(joints=opt.JOINT_NUM, iters=opt.iters)
+model = getattr(module, 'PLFCL')(joints=opt.JOINT_NUM, iters=opt.iters)
 
 if torch.cuda.is_available():
-    if opt.ngpu > 1:
-        model.netR_1 = torch.nn.DataParallel(model.netR_1, range(opt.ngpu))
-        model.netR_2 = torch.nn.DataParallel(model.netR_2, range(opt.ngpu))
-        model.netR_3 = torch.nn.DataParallel(model.netR_3, range(opt.ngpu))
     if opt.model != '':
         model.load_state_dict(torch.load(os.path.join(save_dir, opt.model)), strict=False)
-        model.cuda()
-        criterion = nn.MSELoss(size_average=True).cuda()
-        # 3. evaluation
-        torch.cuda.synchronize()
+    model.cuda()
+    criterion = nn.MSELoss(size_average=True).cuda()
+    # 3. evaluation
+    torch.cuda.synchronize()
 else:
     model.load_state_dict(torch.load(os.path.join(save_dir, opt.model), map_location=torch.device('cpu')), strict=False)
     criterion = nn.MSELoss(size_average=True)
@@ -112,6 +109,8 @@ else:
 
 
 
+if torch.cuda.is_available() and opt.ngpu > 1:
+    model = PLFCLDataParallel(model, device_ids=list(range(opt.ngpu)))
 model.eval()
 
 h = opt.test_hypo

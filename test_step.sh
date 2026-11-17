@@ -16,9 +16,9 @@
 module purge
 module load gcc/12.3.0
 #source env-name/bin/activate
-source ~/miniforge3/bin/activate handdiff
+source ~/miniforge3/bin/activate plfcl
 #cd PycharmProjects/HandOcc_step/main
-python train_diff.py
+python train_plfcl.py
 #python test.py --gpu 0 --test_epoch 1
 #python test.py --gpu 0 --test_epoch 2
 #python test.py --gpu 0 --test_epoch 70

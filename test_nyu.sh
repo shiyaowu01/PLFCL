@@ -1,1 +1,0 @@
-python3 eval_mh.py --gpu 0 --dataset nyu --test_path /data/handpose/nyu/dataset --test_step 1 --test_hypo 2

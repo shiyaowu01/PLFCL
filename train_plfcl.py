@@ -9,6 +9,7 @@ import pdb
 from tqdm import tqdm
 import numpy as np
 import importlib
+from model.parallel import PLFCLDataParallel
 
 import torch
 
@@ -50,7 +51,7 @@ parser.add_argument('--protocal', type=str, default = 's0',  help='evaluation se
 
 parser.add_argument('--test_path', type=str, default = '../dataset',  help='model name for training resume')
 
-parser.add_argument('--model_name', type=str, default = 'handdiff',  help='')
+parser.add_argument('--model_name', type=str, default = 'plfcl',  help='')
 parser.add_argument('--gpu', type=str, default = '0',  help='gpu')
 
 opt = parser.parse_args()
@@ -93,8 +94,7 @@ elif opt.dataset == 'nyu':
 
 
 def _debug(model):
-	model = model.netR_1
-	print(model.named_paramters())
+	print(model.named_parameters())
 try:
 	os.makedirs(save_dir)
 except OSError:
@@ -123,17 +123,16 @@ print('#Train data:', len(train_data), '#Test data:', len(test_data))
 print (opt)
 
 # 2. Define model, loss and optimizer
-model = getattr(module, 'HandModel')(joints=opt.JOINT_NUM, iters=opt.iters)
+model = getattr(module, 'PLFCL')(joints=opt.JOINT_NUM, iters=opt.iters)
 
-if opt.ngpu > 1:
-	model.netR_1 = torch.nn.DataParallel(model.netR_1, range(opt.ngpu))
-	model.netR_2 = torch.nn.DataParallel(model.netR_2, range(opt.ngpu))
-	model.netR_3 = torch.nn.DataParallel(model.netR_3, range(opt.ngpu))
 if opt.model != '':
 	model.load_state_dict(torch.load(os.path.join(save_dir, opt.model)))
 
 
 model.cuda()
+if opt.ngpu > 1:
+    device_ids = [opt.main_gpu] + [i for i in range(opt.ngpu) if i != opt.main_gpu]
+    model = PLFCLDataParallel(model, device_ids=device_ids)
 # print(model)
 
 parameters = model.parameters()
@@ -182,14 +181,14 @@ for epoch in range(opt.start_epoch, opt.nepoch):
 		# 3.1.2 compute output
 		optimizer.zero_grad()
 		loss = model.get_loss(points.transpose(1,2), points.transpose(1,2), img, train_data, center, M, cube, cam_para, gt_xyz.transpose(1,2))
-		# for name, parms in model.named_paramters():
+		# for name, parms in model.named_parameters():
 		# 	print("-->grad_value:", parms.grad)
 		# 3.1.3 compute gradient and do SGD step
 		loss.backward()
 		torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 		optimizer.step()
 		torch.cuda.synchronize()
-		# for name, parms in model.named_paramters():
+		# for name, parms in model.named_parameters():
 		# 	print("----", parms.grad)
 		# 	print("-->grad_value:", parms.grad)
 		
@@ -209,7 +208,7 @@ for epoch in range(opt.start_epoch, opt.nepoch):
 	# print('average estimation error in world coordinate system: %f (mm)' %(train_mse_wld))
 
 	# if (epoch % 10) == 0:
-	# 	torch.save(model.state_dict(), '%s/netR_%d.pth' % (save_dir, epoch))
+	# 	torch.save(model.state_dict(), '%s/plfcl_%d.pth' % (save_dir, epoch))
 	# 	torch.save(optimizer.state_dict(), '%s/optimizer_%d.pth' % (save_dir, epoch))
 
 	# 3.2 switch to evaluate mode

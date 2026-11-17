@@ -1,8 +1,10 @@
+"""PLFCL: Part-Aware Local Feature Contrastive Learning for 3D Hand Pose Estimation."""
+
 import torch.nn as nn
 import math
 import numpy as np
 import torch
-from model.constrastive import intra_info_nce_loss, inter_info_nce_loss
+from model.mesh2joint_contrastive import mesh2joint_intra_contrastive_loss, mesh2joint_inter_contrastive_loss
 from model.transformer import Transformer
 from pointutil import Conv1d, PointNetSetAbstraction, BiasConv1d, square_distance, index_points_group
 import torch.nn.functional as F
@@ -146,10 +148,10 @@ class LocalFoldingGraph(nn.Module):
         return joint_res, new_points
 
 
-class LocalFoldGraph(nn.Module):
+class JointRefinementGraph(nn.Module):
     def __init__(self, nsample, in_channel, latent_channel, mlp, njoint, mlp2=None, bn=False, use_leaky=True,
                  radius=False, residual=True):
-        super(LocalFoldGraph, self).__init__()
+        super(JointRefinementGraph, self).__init__()
         self.radius = radius
         self.nsample = nsample
         self.residual = residual
@@ -270,21 +272,21 @@ class LocalFolding(nn.Module):
         return joints1, joints3
 
 
-class LocalFold(nn.Module):
+class JointRefinement(nn.Module):
     def __init__(self, nsample, in_channel, ctx_channel, mlp, njoint, mlp2=None, bn=False, use_leaky=True, radius=False,
                  residual=True):
-        super(LocalFold, self).__init__()
+        super(JointRefinement, self).__init__()
 
-        self.mappling_graph1 = LocalFoldGraph(nsample=nsample, in_channel=in_channel, latent_channel=ctx_channel,
+        self.mappling_graph1 = JointRefinementGraph(nsample=nsample, in_channel=in_channel, latent_channel=ctx_channel,
                                                  mlp=mlp, njoint=njoint, mlp2=mlp2, bn=bn, use_leaky=use_leaky,
                                                  radius=radius, residual=residual)
-        self.mappling_graph2 = LocalFoldGraph(nsample=nsample, in_channel=in_channel // 2, latent_channel=mlp[-1],
+        self.mappling_graph2 = JointRefinementGraph(nsample=nsample, in_channel=in_channel // 2, latent_channel=mlp[-1],
                                                  mlp=mlp, njoint=njoint, mlp2=mlp2, bn=bn, use_leaky=use_leaky,
                                                  radius=radius, residual=residual)
-        self.mappling_graph3 = LocalFoldGraph(nsample=nsample, in_channel=in_channel, latent_channel=ctx_channel,
+        self.mappling_graph3 = JointRefinementGraph(nsample=nsample, in_channel=in_channel, latent_channel=ctx_channel,
                                                  mlp=mlp, njoint=njoint, mlp2=mlp2, bn=bn, use_leaky=use_leaky,
                                                  radius=radius, residual=residual)
-        self.mappling_graph4 = LocalFoldGraph(nsample=nsample, in_channel=in_channel // 2, latent_channel=mlp[-1],
+        self.mappling_graph4 = JointRefinementGraph(nsample=nsample, in_channel=in_channel // 2, latent_channel=mlp[-1],
                                                  mlp=mlp, njoint=njoint, mlp2=mlp2, bn=bn, use_leaky=use_leaky,
                                                  radius=radius, residual=residual)
 
@@ -307,10 +309,10 @@ class LocalFold(nn.Module):
         joints1, latents = self.mappling_graph2(joints0, img.transpose(1, 2).contiguous(), img_feat,  joint_idx,
                                                 latents0)
         # print(latents.shape)
-        # loss0 = intra_info_nce_loss(latents0, latents, joints0, joints1, torch.ones_like(joints0.permute(0, 2, 1)).squeeze(-1),
+        # loss0 = mesh2joint_intra_contrastive_loss(latents0, latents, joints0, joints1, torch.ones_like(joints0.permute(0, 2, 1)).squeeze(-1),
         #                            anchour_num=100, pos_num=64, neg_num=512, temperature=0.07)
 
-        # loss = intra_info_nce_loss(latents, latents0, joints1, joints0,
+        # loss = mesh2joint_intra_contrastive_loss(latents, latents0, joints1, joints0,
         #                            torch.ones_like(joints0.permute(0, 2, 1)).squeeze(-1),
         #                            anchour_num=100, pos_num=64, neg_num=512, temperature=0.02)
 
@@ -320,11 +322,11 @@ class LocalFold(nn.Module):
         joints3, latents3 = self.mappling_graph4(joints2, img.transpose(1, 2).contiguous(), img_feat,  joint_idx,
                                                 latents)
 
-        # loss = intra_info_nce_loss(latents2, latents3, joints2, joints3,
+        # loss = mesh2joint_intra_contrastive_loss(latents2, latents3, joints2, joints3,
         #                             torch.ones_like(joints0.permute(0, 2, 1)).squeeze(-1),
         #                             anchour_num=100, pos_num=64, neg_num=512, temperature=0.07)
 
-        loss = intra_info_nce_loss(latents3, latents2, joints3, joints2,
+        loss = mesh2joint_intra_contrastive_loss(latents3, latents2, joints3, joints2,
                                    torch.ones_like(joints0.permute(0, 2, 1)).squeeze(-1),
                                    anchour_num=100, pos_num=64, neg_num=512, temperature=0.07)
 
@@ -451,7 +453,8 @@ class DiffusionPoint(nn.Module):
         return hypothesis
 
 
-class LocalConstrastive(nn.Module):
+class Mesh2JointContrastive(nn.Module):
+    """Refinement wrapper for mesh-to-joint contrastive learning (Section III-B)."""
 
     def __init__(self, net, joints):
         super().__init__()
@@ -496,9 +499,10 @@ class LocalConstrastive(nn.Module):
 
         return hypothesis
 
-class HandModel(nn.Module):
+class PLFCL(nn.Module):
+    """Part-Aware Local Feature Contrastive Learning (PLFCL)."""
     def __init__(self, joints=21, iters=10):
-        super(HandModel, self).__init__()
+        super(PLFCL, self).__init__()
         
         self.backbone = convNeXTUnetBig('small', pretrain='1k', deconv_dim=128)
 
@@ -531,8 +535,8 @@ class HandModel(nn.Module):
             )
         )
 
-        self.localconstrastive = LocalConstrastive(
-            net=LocalFold(nsample=64, in_channel=128+128, ctx_channel=512, mlp=[256, 256, 512, 512], njoint=joints),
+        self.mesh2joint_contrastive = Mesh2JointContrastive(
+            net=JointRefinement(nsample=64, in_channel=128+128, ctx_channel=512, mlp=[256, 256, 512, 512], njoint=joints),
             joints=joints,
         )
 
@@ -547,7 +551,22 @@ class HandModel(nn.Module):
         #     # nn.Linear(128, 128)
         # )
         # self.vit = vit()
-        # self.vit.load_state_dict(torch.load('/data/handpose/WorkSpace/HandDiff_vit/mae_pretrain_vit_base.pth'), strict=False)
+        # self.vit.load_state_dict(torch.load('/data/handpose/WorkSpace/PLFCL/mae_pretrain_vit_base.pth'), strict=False)
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        """Migrate the old contrastive module prefix when loading checkpoints."""
+        old_prefix = prefix + 'localconstrastive.'
+        new_prefix = prefix + 'mesh2joint_contrastive.'
+        for key in list(state_dict):
+            if key.startswith(old_prefix):
+                new_key = new_prefix + key[len(old_prefix):]
+                if new_key in state_dict:
+                    error_msgs.append('Conflicting checkpoint keys: {} and {}'.format(key, new_key))
+                else:
+                    state_dict[new_key] = state_dict.pop(key)
+        super()._load_from_state_dict(state_dict, prefix, local_metadata, strict,
+                                      missing_keys, unexpected_keys, error_msgs)
 
     def encode(self, pc, feat, img, loader, center, M, cube, cam_para):
         # x: B*INPUT_FEATURE_NUM*sample_num_level1*knn_K, y: B*3*sample_num_level1*1
@@ -614,13 +633,13 @@ class HandModel(nn.Module):
         joints = self.regress_1(latents)
 
         dense_feat = pc_img_feat.unsqueeze(2)
-        loss = inter_info_nce_loss(dense_feat, joints, anchour_num=100, pos_num=1024, neg_num=2048, temperature=0.07)
+        loss = mesh2joint_inter_contrastive_loss(dense_feat, joints, anchour_num=100, pos_num=1024, neg_num=2048, temperature=0.07)
         # skeleton = ((0, 1), (0, 5), (0, 9), (0, 13), (0, 17), (1, 2), (2, 3), (3, 4), (5, 6), (6, 7), (7, 8), (9, 10), (10, 11),
         #  (11, 12), (13, 14), (14, 15),
         #  (15, 16), (17, 18), (18, 19), (19, 20))
         # # print(joints[0].shape)
         # vis_3d_skeleton(joints[0].permute(1, 0).cpu().detach().numpy(), torch.ones_like(joints[0].permute(1, 0)), skeleton)
-        # loss = inter_info_nce_loss(dense_feat, joints, anchour_num=100, pos_num=128, neg_num=256, temperature=0.07)
+        # loss = mesh2joint_inter_contrastive_loss(dense_feat, joints, anchour_num=100, pos_num=128, neg_num=256, temperature=0.07)
         # return latents, joints, pc1, feat1, img_xyz, pc_img_feat, loss
 
         return latents, joints, pc1, feat1, img_xyz, dense_feat, 0
@@ -628,42 +647,50 @@ class HandModel(nn.Module):
     def decode(self, x0, context, xyz, points, img, img_feat, sampling_steps):
         # return self.diffusion.sample_xnoise_mh(context, xyz, points, flexibility=0.0, ret_traj=False)
         # return self.diffusion.sample(context, xyz, points, img, img_feat, sampling_steps=sampling_steps, flexibility=0.0, ret_traj=False)
-        return self.localconstrastive.sample(x0, context, xyz, points, img, img_feat)
-    def forward(self, pc, feat, img, loader, center, M, cube, cam_para, sampling_steps=5):
-        latents, joints, pc1, feat1, img, img_feat,constrastive_loss = self.encode(pc, feat, img, loader, center, M, cube, cam_para)
+        return self.mesh2joint_contrastive.sample(x0, context, xyz, points, img, img_feat)
+    def forward(self, pc, feat, img, loader, center, M, cube, cam_para,
+                sampling_steps=5, operation='predict', gt=None, h=5, step=20):
+        if operation == 'loss':
+            # One value per sample gives the correct mean for uneven GPU shards.
+            return self.get_loss(pc, feat, img, loader, center, M, cube, cam_para, gt).expand(pc.shape[0])
+        if operation == 'sample':
+            return self.sample(pc, feat, img, loader, center, M, cube, cam_para, h, step)
+        if operation != 'predict':
+            raise ValueError('Unknown PLFCL operation: {}'.format(operation))
+        latents, joints, pc1, feat1, img, img_feat,mesh2joint_contrastive_loss = self.encode(pc, feat, img, loader, center, M, cube, cam_para)
         joints = self.decode(joints, latents, pc1, feat1, img, img_feat, sampling_steps)
         return joints
 
     def get_loss(self, pc, feat, img, loader, center, M, cube, cam_para, gt):
-        latents, joints, pc1, feat1, img, img_feat, constrastive_loss= self.encode(pc, feat, img, loader, center, M, cube, cam_para)
-        # diffusion_loss = self.diffusion.get_loss(gt, latents, pc1, feat1, img, img_feat) + smooth_l1_loss(joints, gt)
-        local_loss = self.localconstrastive.get_loss(joints, latents, pc1, feat1, img, img_feat, gt)
-        # diffusion_loss = diffusion_loss + smooth_l1_loss(joints, gt)
+        latents, joints, pc1, feat1, img, img_feat, mesh2joint_contrastive_loss= self.encode(pc, feat, img, loader, center, M, cube, cam_para)
+        # total_loss = self.diffusion.get_loss(gt, latents, pc1, feat1, img, img_feat) + smooth_l1_loss(joints, gt)
+        local_loss = self.mesh2joint_contrastive.get_loss(joints, latents, pc1, feat1, img, img_feat, gt)
+        # total_loss = total_loss + smooth_l1_loss(joints, gt)
         # experiment 00
 
         # # 7.06
-        # loss = intra_info_nce_loss(img_feat, gt.permute(0, 2, 1), joints.permute(0, 2, 1), torch.ones_like(joints.permute(0, 2, 1)).squeeze(-1),
+        # loss = mesh2joint_intra_contrastive_loss(img_feat, gt.permute(0, 2, 1), joints.permute(0, 2, 1), torch.ones_like(joints.permute(0, 2, 1)).squeeze(-1),
         #                            anchour_num=100, pos_num=128, neg_num=256, temperature=0.07)
         # ?
         # print(joints.shape)
         # sample_pred_joint_feat = self.jointdecoder(joints.permute(0, 2, 1))
         # # sample_gt_joint_feat = self.jointdecoder(gt.permute(0, 2, 1))
-        # loss = intra_info_nce_loss(sample_pred_joint_feat,sample_pred_joint_feat, joints.permute(0, 2, 1), joints.permute(0, 2, 1),
+        # loss = mesh2joint_intra_contrastive_loss(sample_pred_joint_feat,sample_pred_joint_feat, joints.permute(0, 2, 1), joints.permute(0, 2, 1),
         #                            torch.ones_like(joints.permute(0, 2, 1)).squeeze(-1),
         #                            anchour_num=100, pos_num=128, neg_num=256, temperature=0.02)
         # 7.09
-        # loss = intra_info_nce_loss(img_feat, gt.permute(0, 2, 1), joints.permute(0, 2, 1),
+        # loss = mesh2joint_intra_contrastive_loss(img_feat, gt.permute(0, 2, 1), joints.permute(0, 2, 1),
         #                            torch.ones_like(joints.permute(0, 2, 1)).squeeze(-1),
         #                            anchour_num=100, pos_num=256, neg_num=512, temperature=0.07)
 
         # print(loss)
 
-        # loss = inter_info_nce_loss(sample_pred_joint_feat, joints, anchour_num=100, pos_num=128, neg_num=256, temperature=0.07)
+        # loss = mesh2joint_inter_contrastive_loss(sample_pred_joint_feat, joints, anchour_num=100, pos_num=128, neg_num=256, temperature=0.07)
         # return
-        diffusion_loss = 0 + smooth_l1_loss(joints, gt) + local_loss
-        # diffusion_loss =  local_loss
+        total_loss = 0 + smooth_l1_loss(joints, gt) + local_loss
+        # total_loss =  local_loss
 
-        return diffusion_loss
+        return total_loss
 
     def sample(self, pc, feat, img, loader, center, M, cube, cam_para, h=5, step=20):
         latents, joints, pc1, feat1, img, img_feat = self.encode(pc, feat, img, loader, center, M, cube, cam_para)
@@ -679,11 +706,11 @@ if __name__ == '__main__':
     if torch.cuda.is_available():
         input = torch.randn((2,3,1024)).float().cuda()
         img = torch.randn((2,3,224,224)).float().cuda()
-        model = HandModel().cuda()
+        model = PLFCL().cuda()
     else:
         input = torch.randn((2, 3, 1024)).float()
         img = torch.randn((2, 3, 224, 224)).float()
-        model = HandModel()
+        model = PLFCL()
     # print(model)
 
     macs, params = profile(model, inputs=(input,input,img))

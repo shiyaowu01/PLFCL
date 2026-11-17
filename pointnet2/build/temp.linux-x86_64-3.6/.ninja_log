@@ -1,0 +1,10 @@
+# ninja log v6
+4	9681	1716298796000000000	/lustre/alice3/data/handpose/WorkSpace/HandDiff/pointnet2/build/temp.linux-x86_64-3.6/src/ball_query.o	3d22a0cda77a3c00
+1	30999	1716298796000000000	/lustre/alice3/data/handpose/WorkSpace/HandDiff/pointnet2/build/temp.linux-x86_64-3.6/src/pointnet2_api.o	460fc4224ddfac4d
+9688	33917	1716298806000000000	/lustre/alice3/data/handpose/WorkSpace/HandDiff/pointnet2/build/temp.linux-x86_64-3.6/src/ball_query_gpu.o	70ef0306cbc1ec6e
+31000	39735	1716298827000000000	/lustre/alice3/data/handpose/WorkSpace/HandDiff/pointnet2/build/temp.linux-x86_64-3.6/src/group_points.o	76ff437915782b18
+39735	48736	1716298836000000000	/lustre/alice3/data/handpose/WorkSpace/HandDiff/pointnet2/build/temp.linux-x86_64-3.6/src/interpolate.o	60bb9bab9232ca55
+33919	57887	1716298830000000000	/lustre/alice3/data/handpose/WorkSpace/HandDiff/pointnet2/build/temp.linux-x86_64-3.6/src/group_points_gpu.o	9cf6677093f4fa
+57887	66930	1716298854000000000	/lustre/alice3/data/handpose/WorkSpace/HandDiff/pointnet2/build/temp.linux-x86_64-3.6/src/sampling.o	d30e270b2d3996b8
+48736	72599	1716298845000000000	/lustre/alice3/data/handpose/WorkSpace/HandDiff/pointnet2/build/temp.linux-x86_64-3.6/src/interpolate_gpu.o	1951b1ba1a3aa107
+66931	82301	1716298863000000000	/lustre/alice3/data/handpose/WorkSpace/HandDiff/pointnet2/build/temp.linux-x86_64-3.6/src/sampling_gpu.o	9b93e6fd62f5f18b
